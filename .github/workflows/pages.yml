@@ -1,0 +1,76 @@
+name: deploy velvet anatomy pages
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "site/**"
+      - ".github/workflows/pages.yml"
+  pull_request:
+    paths:
+      - "site/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: velvet-anatomy-pages
+  cancel-in-progress: true
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Validate public site bundle
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f site/index.html
+          test -f site/privacy/index.html
+          test -f site/assets/styles.css
+          test -f site/assets/favicon.svg
+          test -f site/.nojekyll
+          test -f site/robots.txt
+          grep -q 'href="privacy/"' site/index.html
+          grep -q 'href="../"' site/privacy/index.html
+          grep -q 'href="assets/styles.css"' site/index.html
+          grep -q 'href="../assets/styles.css"' site/privacy/index.html
+          if grep -R --fixed-strings 'https://github.com/Stellmaria/Velvet"' site; then
+            echo "Public site must not link to the private Velvet repository." >&2
+            exit 1
+          fi
+
+  deploy:
+    if: github.event_name != 'pull_request'
+    needs: validate
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+
+      - name: Upload public site
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: site
+
+      - name: Deploy public site
+        id: deployment
+        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5.0.0
